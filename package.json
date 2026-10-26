@@ -1,0 +1,29 @@
+{
+  "name": "kardex-clinico-back",
+  "version": "1.0.0",
+  "description": "API del Kardex Clínico: inventario, movimientos, toma física, usuarios, roles y permisos por pantalla y acción",
+  "type": "module",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-concurrency=1 --test-reporter=spec \"test/**/*.test.js\"",
+    "dev:memoria": "node scripts/dev-memoria.js",
+    "admin:restablecer": "node scripts/restablecer-admin.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.24.6"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.4.3",
+    "supertest": "^7.1.0"
+  }
+}
