@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEF_CFG, computeAlerts, itemKey, limpiarItem, resumenConteo, semaforo, validarMovimiento } from "../src/domain/kardex.js";
+import { DEF_CFG, computeAlerts, itemKey, limpiarItem, mismoProducto, resumenConteo, semaforo, validarMovimiento } from "../src/domain/kardex.js";
 
 const HOY = "2026-01-01";
 const base = { id: "i1", tipo: "MED", nombre: "Dipirona", lote: "A", invima: "X", vencimiento: "2030-01-01", saldo: 10, activo: true };
@@ -57,6 +57,23 @@ describe("limpiarItem", () => {
   });
   it("en modo parcial no exige nombre si no viene", () => {
     assert.deepEqual(limpiarItem({ costo: 10 }, { parcial: true }).errores, []);
+  });
+});
+
+describe("mismoProducto", () => {
+  const a = { codigo: "M-1", nombre: "Dipirona 1 g", lote: "A1", serie: "", ubicacion: "UCI" };
+  it("compara por código cuando ambos lo tienen", () => {
+    assert.equal(mismoProducto(a, { ...a, codigo: "m1", nombre: "Otro nombre" }), true);
+    assert.equal(mismoProducto(a, { ...a, codigo: "M-2" }), false);
+  });
+  it("compara por nombre si alguno no tiene código", () => {
+    assert.equal(mismoProducto(a, { nombre: "dipirona 1g", lote: "a1", ubicacion: "uci" }), true);
+    assert.equal(mismoProducto(a, { nombre: "Dipirona 500 mg", lote: "A1", ubicacion: "UCI" }), false);
+  });
+  it("lote, serie y ubicación deben coincidir", () => {
+    assert.equal(mismoProducto(a, { ...a, lote: "A2" }), false);
+    assert.equal(mismoProducto(a, { ...a, serie: "S1" }), false);
+    assert.equal(mismoProducto(a, { ...a, ubicacion: "Urgencias" }), false);
   });
 });
 

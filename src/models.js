@@ -135,6 +135,7 @@ const importeSchema = new Schema({
   filas: Number,
   creados: Number,
   entradas: Number,
+  sumados: { type: Number, default: 0 },
   omitidos: Number,
   errores: [String],
 });

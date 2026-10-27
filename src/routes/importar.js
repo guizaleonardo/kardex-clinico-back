@@ -4,6 +4,7 @@ import { authorize } from "../middleware/auth.js";
 import { badRequest } from "../errors.js";
 import { itemKey, limpiarItem } from "../domain/kardex.js";
 import { registrarMovimiento } from "../services/movimientos.js";
+import { buscarExistente, sumarAExistente } from "../services/items.js";
 import { getConfig } from "../services/datos.js";
 
 const MAX_FILAS = 5000;
@@ -17,7 +18,7 @@ export default function importarRoutes() {
 
   /**
    * Filas ya mapeadas en el cliente desde Excel/CSV.
-   * destino "maestro": crea ítems con su cantidad como saldo inicial (omite los que ya existen).
+   * destino "maestro": crea ítems con su cantidad como saldo inicial; si ya existen, suma la cantidad como Entrada.
    * destino "entrada": registra una Entrada por fila (crea el ítem si no existe) con el soporte indicado.
    */
   r.post("/", authorize("importar:ejecutar"), async (req, res) => {
@@ -28,7 +29,7 @@ export default function importarRoutes() {
     if (destino === "entrada" && !String(soporte).trim()) throw badRequest("Las entradas requieren documento soporte (remisión o factura)");
     const cfg = await getConfig();
     const origen = `${fuente} ${archivo}`.trim();
-    let creados = 0, entradas = 0, omitidos = 0;
+    let creados = 0, entradas = 0, sumados = 0, omitidos = 0;
     const errores = [];
 
     for (const [i, fila] of filas.entries()) {
@@ -38,9 +39,16 @@ export default function importarRoutes() {
       if (cantidad < 0) e.push("cantidad negativa");
       if (e.length) { errores.push(`Fila ${n}: ${e.join(", ")}`); omitidos++; continue; }
       const clave = itemKey(item);
-      let it = await Item.findOne({ clave, activo: true });
+      let it = await buscarExistente(item);
       if (destino === "maestro") {
-        if (it) { omitidos++; continue; }
+        if (it) {
+          if (!(cantidad > 0)) { omitidos++; continue; }
+          try {
+            await sumarAExistente({ item: it, cantidad, soporte: `Carga Excel ${archivo}`.trim(), usuarioId: req.user._id, cfg });
+            sumados++;
+          } catch (err) { errores.push(`Fila ${n}: ${err.message}`); omitidos++; }
+          continue;
+        }
         await Item.create({ ...item, clave, saldo: cantidad, saldoInicial: cantidad, origen, creadoPor: req.user._id });
         creados++;
       } else {
@@ -52,7 +60,7 @@ export default function importarRoutes() {
         } catch (err) { errores.push(`Fila ${n}: ${err.message}`); omitidos++; }
       }
     }
-    const imp = await Importe.create({ por: req.user._id, fuente, archivo, destino, soporte, filas: filas.length, creados, entradas, omitidos, errores: errores.slice(0, 200) });
+    const imp = await Importe.create({ por: req.user._id, fuente, archivo, destino, soporte, filas: filas.length, creados, entradas, sumados, omitidos, errores: errores.slice(0, 200) });
     res.status(201).json(imp);
   });
 

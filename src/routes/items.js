@@ -3,12 +3,12 @@ import { Item, Movimiento } from "../models.js";
 import { authorize } from "../middleware/auth.js";
 import { badRequest, conflict, notFound } from "../errors.js";
 import { itemKey, limpiarItem } from "../domain/kardex.js";
+import { buscarExistente, sumarAExistente } from "../services/items.js";
+import { getConfig } from "../services/datos.js";
 
 async function verificarDuplicado(datos, excluirId) {
-  const clave = itemKey(datos);
-  const dup = await Item.exists({ clave, activo: true, ...(excluirId ? { _id: { $ne: excluirId } } : {}) });
-  if (dup) throw conflict("Ya existe un ítem con ese código, lote, serie y ubicación");
-  return clave;
+  if (await buscarExistente(datos, excluirId)) throw conflict("Ya existe un ítem con ese código, lote, serie y ubicación");
+  return itemKey(datos);
 }
 
 export default function itemsRoutes() {
@@ -34,8 +34,16 @@ export default function itemsRoutes() {
     const cantidad = Number(req.body?.cantidad) || 0;
     if (cantidad < 0) errores.push("La cantidad inicial no puede ser negativa");
     if (errores.length) throw badRequest(errores.join(". "));
-    const clave = await verificarDuplicado(item);
-    const nuevo = await Item.create({ ...item, clave, saldo: cantidad, saldoInicial: cantidad, origen: "Manual", creadoPor: req.user._id });
+    // Si el producto ya existe (mismo lote, serie y ubicación) la cantidad se suma como Entrada en su kardex.
+    const existente = await buscarExistente(item);
+    if (existente) {
+      if (!(cantidad > 0)) throw conflict("Ya existe un ítem con ese código, lote, serie y ubicación. Ingrese una cantidad para sumarla a su saldo");
+      const soporte = String(req.body?.soporte || "").trim() || "Ingreso manual desde Nuevo ítem";
+      const mov = await sumarAExistente({ item: existente, cantidad, soporte, usuarioId: req.user._id, cfg: await getConfig() });
+      const actualizado = await Item.findById(existente._id);
+      return res.status(200).json({ ...actualizado.toJSON(), sumado: true, cantidadSumada: cantidad, movimiento: mov.id });
+    }
+    const nuevo = await Item.create({ ...item, clave: itemKey(item), saldo: cantidad, saldoInicial: cantidad, origen: "Manual", creadoPor: req.user._id });
     res.status(201).json(nuevo);
   });
 

@@ -36,6 +36,16 @@ export function itemKey(o) {
   return [norm(o.codigo) || norm(o.nombre), norm(o.lote), norm(o.serie), norm(o.ubicacion)].join("|");
 }
 
+/**
+ * Dos registros son el mismo producto si coinciden lote, serie y ubicación y además:
+ * el código (cuando ambos lo tienen) o, si alguno no tiene código, el nombre.
+ */
+export function mismoProducto(a, b) {
+  if (norm(a.lote) !== norm(b.lote) || norm(a.serie) !== norm(b.serie) || norm(a.ubicacion) !== norm(b.ubicacion)) return false;
+  if (norm(a.codigo) && norm(b.codigo)) return norm(a.codigo) === norm(b.codigo);
+  return Boolean(norm(a.nombre)) && norm(a.nombre) === norm(b.nombre);
+}
+
 /** Limpia y valida los campos editables de un ítem. Devuelve { item, errores }. */
 export function limpiarItem(body = {}, { parcial = false } = {}) {
   const item = {};

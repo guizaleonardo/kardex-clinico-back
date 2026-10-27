@@ -15,9 +15,38 @@ describe("inventario", () => {
     assert.equal(res.body.saldoInicial, 25);
   });
 
-  it("rechaza duplicados por código, lote, serie y ubicación", async () => {
-    assert.equal((await A().post("/api/items", { ...ITEM, codigo: "m 001" })).status, 409);
+  it("si el producto ya existe suma la cantidad como entrada en su kardex", async () => {
+    const res = await A().post("/api/items", { ...ITEM, codigo: "m 001", cantidad: 5, soporte: "FAC-55" });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.sumado, true);
+    assert.equal(res.body.cantidadSumada, 5);
+    assert.equal(res.body.saldo, 30, "25 iniciales + 5");
+    const k = await A().get(`/api/items/${res.body.id}/kardex`);
+    assert.equal(k.body.movimientos.length, 1);
+    assert.equal(k.body.movimientos[0].tipo, "ENT");
+    assert.equal(k.body.movimientos[0].soporte, "FAC-55");
+    assert.equal(k.body.coincide, true);
+    const mismos = (await A().get("/api/items")).body.filter((i) => i.codigo === ITEM.codigo && i.lote === ITEM.lote && i.ubicacion === ITEM.ubicacion);
+    assert.equal(mismos.length, 1, "no se crea una fila duplicada");
+  });
+
+  it("reconoce el producto por nombre cuando uno de los dos no tiene código", async () => {
+    const res = await A().post("/api/items", { nombre: "acetaminofen", lote: "l1", ubicacion: "urgencias", cantidad: 2 });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.saldo, 32);
+    assert.equal((await A().get(`/api/items/${res.body.id}/kardex`)).body.movimientos.at(-1).soporte, "Ingreso manual desde Nuevo ítem");
+  });
+
+  it("otro lote, otra ubicación u otro código crean un ítem nuevo", async () => {
     assert.equal((await A().post("/api/items", { ...ITEM, ubicacion: "UCI" })).status, 201);
+    assert.equal((await A().post("/api/items", { ...ITEM, lote: "OTRO" })).status, 201);
+    assert.equal((await A().post("/api/items", { ...ITEM, codigo: "M-999" })).status, 201);
+  });
+
+  it("sin cantidad no hay nada que sumar a un existente", async () => {
+    const res = await A().post("/api/items", { ...ITEM, cantidad: 0 });
+    assert.equal(res.status, 409);
+    assert.match(res.body.error, /cantidad/);
   });
 
   it("valida campos", async () => {
@@ -108,7 +137,7 @@ describe("movimientos y kardex", () => {
 });
 
 describe("importar", () => {
-  it("carga el maestro omitiendo existentes y filas inválidas", async () => {
+  it("carga el maestro sumando a los existentes y omitiendo filas inválidas", async () => {
     const filas = [
       { nombre: "Gasa", tipo: "INS", lote: "G1", cantidad: 100, ubicacion: "Cirugía" },
       { nombre: "Gasa", tipo: "INS", lote: "G1", cantidad: 100, ubicacion: "Cirugía" },
@@ -117,8 +146,14 @@ describe("importar", () => {
     const res = await A().post("/api/importar", { filas, destino: "maestro", archivo: "inv.xlsx" });
     assert.equal(res.status, 201);
     assert.equal(res.body.creados, 1);
-    assert.equal(res.body.omitidos, 2);
+    assert.equal(res.body.sumados, 1);
+    assert.equal(res.body.omitidos, 1);
     assert.equal(res.body.errores.length, 1);
+    const gasa = (await A().get("/api/items")).body.filter((i) => i.nombre === "Gasa");
+    assert.equal(gasa.length, 1);
+    assert.equal(gasa[0].saldo, 200);
+    const k = await A().get(`/api/items/${gasa[0].id}/kardex`);
+    assert.equal(k.body.movimientos[0].soporte, "Carga Excel inv.xlsx");
     assert.equal((await A().get("/api/importar/historial")).body.length, 1);
   });
 
